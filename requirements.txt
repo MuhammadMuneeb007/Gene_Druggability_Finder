@@ -1,0 +1,56 @@
+# ============================================================================
+# Druggability Assessment Pipeline - Requirements
+# Python 3.8+ required
+# ============================================================================
+
+# Core Data Processing
+pandas>=1.5.0
+numpy>=1.23.0
+
+# HTTP Requests and API Access
+requests>=2.28.0
+
+# Scientific Computing and Statistics
+scipy>=1.9.0
+scikit-learn>=1.1.0
+
+# Bioinformatics and Structural Biology
+# Note: fpocket must be installed separately (see README.md)
+
+# Optional but Recommended
+matplotlib>=3.5.0  # For visualization
+seaborn>=0.12.0    # For enhanced plots
+
+# System and File Operations (built-in, listed for reference)
+# json (built-in)
+# pathlib (built-in)
+# subprocess (built-in)
+# logging (built-in)
+# time (built-in)
+# re (built-in)
+# typing (built-in)
+
+# ============================================================================
+# Installation Instructions
+# ============================================================================
+#
+# 1. Install Python dependencies:
+#    pip install -r requirements.txt
+#
+# 2. Install fpocket (for Step 5 - Binding Pocket Prediction):
+#    
+#    Linux/Mac:
+#    - Download from: https://github.com/Discngine/fpocket
+#    - Follow installation instructions in fpocket documentation
+#    - Ensure 'fpocket' command is available in PATH
+#    
+#    Windows:
+#    - fpocket support on Windows is limited
+#    - Consider using WSL (Windows Subsystem for Linux)
+#    - Or use pre-computed pocket data
+#
+# 3. Verify installation:
+#    python -c "import pandas, numpy, scipy, sklearn, requests; print('✓ All packages installed')"
+#    fpocket -h  # Should show fpocket help
+#
+# ============================================================================
