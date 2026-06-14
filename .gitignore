@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary Microsoft Office lock files
+~$*
+
+# Common local environments and editor files
+.venv/
+venv/
+.env
+.vscode/
+.idea/
+
+# Operating-system files
+.DS_Store
+Thumbs.db
