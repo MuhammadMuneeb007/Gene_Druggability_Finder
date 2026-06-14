@@ -1,103 +1,117 @@
-# Gene Druggability Data and Feature Engineering Pipeline
+# Gene Druggability Finder
 
-This repository contains the data preparation and feature engineering code for a
-human gene druggability modelling project. It builds:
+Gene Druggability Finder (GDF) is a leakage-aware, multi-evidence framework for
+predicting and benchmarking human gene druggability.
 
-1. A gene-level druggability label/evidence table from known target databases.
-2. A collection of independent biological, genetic, structural, expression, and
-   network feature tables.
-3. Gene-level HGNC-merged outputs that can be combined into modelling datasets.
+The pipeline:
 
-The most important design rule is the separation between **label evidence** and
-**predictive features**:
+1. Builds eight druggability target labels for 19,295 HGNC-approved
+   protein-coding genes.
+2. Generates 22 independent biological feature blocks.
+3. Merges 2,285 feature columns into a gene-level feature matrix.
+4. Creates 440 target-feature datasets.
+5. Benchmarks Random Forest and XGBoost using stratified five-fold
+   cross-validation.
+6. Summarises model performance and feature importance.
 
-- `Dataset0-DownloadDatabases.py` and `Dataset1-GenerateData.py` use known
-  druggability evidence to create the target labels.
-- `Feature0-DownloadDatabase.py` and `Feature1...Feature22` create predictors
-  intended to avoid directly leaking those labels into the model.
+> **Interpretation:** GDF predicts database-constructed druggability labels. It
+> is a target-prioritisation and evidence-integration framework, not definitive
+> proof that a gene will become a clinically successful drug target.
 
-## Repository Status
+## Key Results
 
-The current repository contains source scripts and one supplementary workbook.
-Downloaded databases and generated feature directories are not currently stored
-beside the scripts and must be downloaded or supplied before running the full
-pipeline.
+The reported internal benchmark covers 440 target-feature datasets:
 
-All Python files in the repository were syntax-checked successfully with
-`python -m py_compile`.
+| Result | Value |
+|---|---:|
+| Human protein-coding genes | 19,295 |
+| Druggability targets | 8 |
+| Feature blocks | 22 |
+| Feature columns before model sanitisation | 2,285 |
+| Feature-group configurations | 55 |
+| Train-ready datasets | 440 |
+| Best mean cross-validated AUROC | 0.9809 |
+| Median AUROC | 0.8488 |
+| Mean AUROC | 0.8344 +/- 0.1005 |
+| Median AUPRC | 0.7476 |
+| Median Matthews correlation coefficient | 0.4411 |
+| XGBoost selected as best model | 350 datasets (79.5%) |
+| Random Forest selected as best model | 90 datasets (20.5%) |
 
-`Supplementary Material 2.xlsx` currently contains:
+The highest AUROC was achieved by `Dataset413_GRP_NoStructure_T5`, which
+predicted the Biologic/Modality Target with:
 
-- **Feature Statistics:** 2,285 feature-statistic records.
-- **Dataset Statistics:** 9,680 modelling-dataset records.
-- **Model Performance:** an empty placeholder sheet.
+- AUROC: `0.9809`
+- AUPRC: `0.9817`
+- Matthews correlation coefficient: `0.8786`
+- Best model: XGBoost
 
-## Pipeline Overview
+Integrated feature sets performed better than most individual feature blocks:
+
+| Feature tier | Datasets | Best AUROC | Median AUROC | Median AUPRC | Median MCC |
+|---|---:|---:|---:|---:|---:|
+| Cumulative | 176 | 0.9809 | 0.9346 | 0.9045 | 0.6497 |
+| Thematic | 88 | 0.9809 | 0.8289 | 0.7620 | 0.4367 |
+| Individual feature blocks | 176 | 0.9421 | 0.7475 | 0.6377 | 0.3093 |
+
+These are internal cross-validation results. External and prospective
+validation are still required.
+
+## Pipeline Design
+
+GDF separates target-label construction from predictive feature generation:
 
 ```text
-Known druggability databases
-    |
-    +-- Dataset0-DownloadDatabases.py
-    |
-    +-- Dataset1-GenerateData.py
-            |
-            +-- Step0_Output/03_HumanGene_DruggabilityLabels.csv
+LABEL SIDE
+HGNC + ChEMBL + Open Targets + DGIdb + Pharos/TCRD
+    -> eight gene-level druggability targets
 
-Independent biological databases
-    |
-    +-- Feature0-DownloadDatabase.py
-    |
-    +-- Feature1 ... Feature22
-            |
-            +-- feature-specific gene tables
-            +-- feature-specific HGNC-merged tables
+FEATURE SIDE
+22 independent biological and molecular evidence blocks
+    -> merged feature matrix
+
+ANALYSIS SIDE
+feature matrix + target labels
+    -> 440 datasets
+    -> Random Forest and XGBoost benchmark
+    -> performance and feature-importance summaries
 ```
 
-Most feature scripts use this common HGNC input:
+Direct target-defining evidence from ChEMBL, Open Targets, DGIdb and
+Pharos/TCRD is reserved for the label side and excluded from model inputs.
 
-```text
-databases/HGNC/hgnc_complete_set.txt
-```
+## Repository Workflow
 
-Unless `--all-hgnc-genes` or an equivalent option is supplied, most scripts
-focus on protein-coding genes.
+Run commands from the repository root.
 
-## Installation
+### Step 1: Install Dependencies
 
 Python 3.10 is recommended.
 
 ```bash
 conda create -n druggability python=3.10 -y
 conda activate druggability
-pip install pandas numpy requests tqdm pyarrow networkx h5py scikit-learn openpyxl
+
+pip install pandas numpy requests tqdm pyarrow openpyxl scipy \
+  scikit-learn xgboost networkx h5py biopython matplotlib
 ```
 
-Important optional system tools:
+Optional system tools:
 
-- `fpocket`: required only for real pocket scoring in Feature 10.
-- SLURM: used by `Feature10-FPocket.sh` for HPC array execution.
-- `curl` or `wget`: optional download fallbacks used by some scripts.
+- [fpocket](https://github.com/Discngine/fpocket) for Feature 10 pocket scores.
+- SLURM for HPC array execution.
+- `curl` or `wget` as download fallbacks used by some scripts.
 
-`Dataset1-GenerateData.py` reads Open Targets parquet data, so pandas needs a
-parquet engine such as `pyarrow`.
-
-## Recommended Execution Order
-
-Run commands from the repository root.
-
-### 1. Download Label/Evidence Databases
+### Step 2: Download Target-Label Databases
 
 ```bash
 python Dataset0-DownloadDatabases.py --all --opentargets-release 26.03
 ```
 
-This downloads HGNC, ChEMBL, Open Targets, DGIdb, and TCRD/Pharos data where
-automatic download is possible.
+The downloader skips valid files that are already present. Use `--overwrite`
+only when a deliberate refresh is required.
 
-Downloaded valid files are skipped by default. Use `--overwrite` only when a
-deliberate refresh is required.
-
-### 2. Build the Ground-Truth Label Table
+### Step 3: Build Druggability Labels
 
 ```bash
 python Dataset1-GenerateData.py --save-raw-evidence
@@ -110,26 +124,17 @@ Primary output:
 Step0_Output/03_HumanGene_DruggabilityLabels.csv
 ```
 
-This file is the target/evidence table. Do not use its ChEMBL, Open Targets,
-DGIdb, or Pharos evidence columns as model input features.
+### Step 4: Download Core Feature Databases
 
-### 3. Download Core No-Leakage Feature Databases
-
-Recommended first run:
+Recommended first download:
 
 ```bash
 python Feature0-DownloadDatabase.py --recommended
 ```
 
-This downloads the most useful core inputs:
+This downloads HGNC, UniProt, Ensembl, STRING and GTEx inputs.
 
-- HGNC
-- UniProt
-- Ensembl
-- STRING
-- GTEx
-
-Large optional downloads can be added later:
+Large optional downloads:
 
 ```bash
 python Feature0-DownloadDatabase.py --recommended --include-alphafold
@@ -137,13 +142,13 @@ python Feature0-DownloadDatabase.py --sources interpro --include-interpro-huge -
 python Feature0-DownloadDatabase.py --full
 ```
 
-The downloader safely skips existing valid files unless `--overwrite` is used.
-AlphaFold archives are dynamically discovered from the latest EBI directory,
-and the current Pfam bulk filenames are used.
+The downloader skips existing valid files, resumes `.part` downloads,
+dynamically discovers the current AlphaFold human archive and uses current Pfam
+bulk filenames.
 
-### 4. Build Feature Tables
+### Step 5: Generate the 22 Feature Blocks
 
-Run feature scripts individually. A sensible starting sequence is:
+Run the feature scripts after their source databases are available:
 
 ```bash
 python Feature1_DeMap.py
@@ -155,18 +160,373 @@ python Feature6_UniProt.py
 python Feature7_GTEx.py
 python Feature8_Ensmbl.py
 python Feature9_Genetics_Contraint.py
+python Feature11-ProteinFeatures.py
+python Feature12-ProteinSequence.py
+python Feature13_GWAS.py --download
+python Feature14_GO.py --download
+python Feature15_BioGRID.py --download
+python Feature16_HPA.py
+python Feature17_CTD.py --download
+python Feature18_MGI.py --download
+python Feature19_gnomAD_full.py
+python Feature20_CORUM.py
+python Feature21_PhosphoSitePlus.py --download
+python Feature22_Paralogues.py
 ```
 
-Then run the remaining feature scripts as their source data becomes available.
-Most scripts support a fast-test option such as `--limit-genes`, `--max-rows`,
-or `--max-lines`.
+Feature 10 is designed as a chunked structure/pocket workflow:
 
-There is currently no single orchestration script that executes all feature
-builders or merges every final feature table into one master matrix.
+```bash
+sbatch Feature10-FPocket.sh
+python Feature10-FPocket-merge.py
+```
+
+For a small local Feature 10 test:
+
+```bash
+python Feature10-FPocket.py 1 --chunk-size 100
+python Feature10-FPocket.py 1 --chunk-size 100 --run-fpocket
+```
+
+### Step 6: Merge All Feature Blocks
+
+```bash
+python Analysis1-MergeData.py --verbose
+```
+
+Output:
+
+```text
+Dataset/Features_All.csv
+```
+
+The merger:
+
+- Locates the expected gene-level output from each feature block.
+- Normalises gene symbols.
+- Prefixes columns with `Feature1_` through `Feature22_`.
+- Excludes identifiers, raw text, paths, URLs and other non-model columns.
+- Outer-merges all available feature blocks.
+
+### Step 7: Generate Feature Statistics
+
+```bash
+python Analysis2-ListFeaturesStatistics.py \
+  --features Dataset/Features_All.csv \
+  --out Feature_Statistics.xlsx
+
+python Analysis2.1-ListFeaturesStatistics.py
+```
+
+The first script calculates gene coverage, missingness and numeric summary
+statistics for every feature. The second prints feature counts per block.
+
+Do not set `--out` to the existing `Supplementary Material 2.xlsx` unless you
+intend to replace it. `Analysis2-ListFeaturesStatistics.py` creates a new
+workbook and would overwrite the compiled performance and feature-importance
+sheets.
+
+### Step 8: Create Train-Ready Datasets
+
+```bash
+python Analysis3-MakeDatasets.py
+```
+
+This crosses eight target definitions with 55 feature-group configurations:
+
+- 22 individual groups: `F01` to `F22`
+- 22 cumulative groups: `CUM01` to `CUM22`
+- 11 thematic groups
+
+Thematic groups:
+
+| Group | Included feature blocks |
+|---|---|
+| `GRP_Structure` | 4, 10 |
+| `GRP_Network` | 2, 15 |
+| `GRP_Expression` | 7, 16 |
+| `GRP_Constraint` | 9, 19 |
+| `GRP_Pathway` | 3, 14 |
+| `GRP_Functional` | 5, 6, 11, 12 |
+| `GRP_Omics` | 1, 18 |
+| `GRP_Annotation` | 8, 13, 20, 21, 22 |
+| `GRP_Literature` | 17 |
+| `GRP_NoStructure` | All except 4 and 10 |
+| `GRP_Full` | All 22 blocks |
+
+Each generated dataset contains:
+
+```text
+Datasets/Dataset001_F01_T1/
+    X_train.csv
+    y_train.csv
+    meta.json
+    feature_columns.txt
+    missingness_summary.csv
+```
+
+Missing values remain in `X_train.csv` and are imputed inside training folds.
+
+### Step 9: Train Models
+
+Train one dataset locally:
+
+```bash
+python Analysis4-TrainModels.py 1 --no-permutation
+```
+
+Train all 440 datasets on SLURM:
+
+```bash
+sbatch Analysis4-TrainModels.sh
+```
+
+The training script:
+
+- Removes identifiers and suspicious leakage-related columns.
+- Converts selected predictors to numeric values.
+- Replaces infinite and unsafe values with missing values.
+- Performs median imputation inside each cross-validation fold.
+- Evaluates Random Forest and XGBoost.
+- Uses stratified five-fold cross-validation by default.
+- Selects the best model using mean cross-validated AUROC.
+- Writes fold predictions, metrics, confusion matrices and feature importance.
+
+Main training outputs inside each dataset's `Training/` directory:
+
+```text
+00_training_metadata.json
+00_feature_cleaning_report.csv
+01_feature_columns_used.csv
+02_target_info.csv
+03_cv_all_predictions.csv
+04_cv_fold_metrics.csv
+05_model_comparison_summary.csv
+06_best_model_summary.csv
+07_feature_importance_all_folds.csv
+08_feature_importance_summary.csv
+09_top_features_best_model.csv
+10_confusion_matrix_per_fold.csv
+11_confusion_matrix_aggregate.csv
+12_permutation_test_results.csv
+13_leakage_audit.csv
+```
+
+### Step 10: Audit Dataset and Training Outputs
+
+```bash
+python Analysis4.0-CheckDatasets.py
+```
+
+`Analysis4.0-CheckDatasets.py` currently contains an HPC-specific absolute path:
+
+```text
+/data/ascher02/uqmmune1/DrugableGeneFinder/Final
+```
+
+Update `BASE_DIR` in that script before running it elsewhere.
+
+## Eight Druggability Targets
+
+The target table contains eight operational definitions of druggability:
+
+| Target | Definition | Positive genes | Prevalence |
+|---|---|---:|---:|
+| T1 Clinical Target | Approved or clinically established target; the strictest primary definition. | 1,052 | 5.45% |
+| T2 Clinical Investigation Target | Phase 1-3 clinical-investigation evidence. | 504 | 2.61% |
+| T3 Small-Molecule Target | Small-molecule tractability evidence. | 7,231 | 37.48% |
+| T4 Chemical Tractability Target | Broader chemical tractability evidence. | 7,058 | 36.58% |
+| T5 Biologic/Modality Target | Biologic, antibody, targeted-degradation or other modality evidence. | 9,699 | 50.27% |
+| T6 Drug-Gene Interaction Target | DGIdb-supported drug-gene interaction evidence. | 4,575 | 23.71% |
+| T7 Potentially Druggable Family Target | Potentially druggable family/category annotation. | 9,518 | 49.33% |
+| T8 Broad Druggability Target | Positive for any preceding druggability definition. | 14,791 | 76.66% |
+
+T1 is the primary conservative target. T8 is a broad evidence-union label and
+should not be interpreted as a strict clinical gold standard.
+
+## Label-Construction Databases
+
+| Database | Purpose | Access |
+|---|---|---|
+| HGNC | Defines the human gene universe and stable identifier mappings. | [HGNC complete set](https://storage.googleapis.com/public-download-files/hgnc/tsv/tsv/hgnc_complete_set.txt) |
+| ChEMBL | Human targets, mechanisms, approved/phase 4 drugs and potent activity evidence. | [ChEMBL releases](https://ftp.ebi.ac.uk/pub/databases/chembl/ChEMBLdb/releases/) |
+| Open Targets | Target identity, tractability and clinical-indication evidence. | [Open Targets platform downloads](https://ftp.ebi.ac.uk/pub/databases/opentargets/platform/) |
+| DGIdb | Drug-gene interactions and druggable-category evidence. | [DGIdb downloads](https://dgidb.org/downloads) |
+| Pharos/TCRD | Target development levels: TCLIN, TCHEM, TBIO and TDARK. | [Pharos GraphQL API](https://pharos-api.ncats.io/graphql) |
+
+## Feature Blocks and Database Links
+
+The current feature-statistics workbook contains 2,285 feature columns:
+
+| Feature | Source | Columns | Access |
+|---:|---|---:|---|
+| 1 | DepMap functional genomics | 90 | [DepMap downloads](https://depmap.org/portal/download/all/) / [file-index API](https://depmap.org/portal/api/download/files) |
+| 2 | STRING v12.0 PPI network | 48 | [STRING API](https://string-db.org/api) |
+| 3 | Reactome pathways | 30 | [Reactome downloads](https://reactome.org/download/current/) |
+| 4 | AlphaFold DB + RCSB PDB structures | 33 | [AlphaFold DB](https://alphafold.ebi.ac.uk/) / [RCSB PDB](https://www.rcsb.org/) |
+| 5 | InterPro + Pfam domains | 72 | [InterPro](https://www.ebi.ac.uk/interpro/) / [Pfam FTP](https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/) |
+| 6 | UniProt protein annotation | 91 | [UniProt REST API](https://rest.uniprot.org/) |
+| 7 | GTEx tissue expression | 108 | [GTEx portal](https://gtexportal.org/) / [v8 median TPM](https://storage.googleapis.com/adult-gtex/bulk-gex/v8/rna-seq/GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_median_tpm.gct.gz) |
+| 8 | Ensembl gene structure | 52 | [Ensembl human GTF](https://ftp.ensembl.org/pub/current_gtf/homo_sapiens/) |
+| 9 | gnomAD + MobiDB + DisProt constraint/disorder | 74 | [gnomAD](https://gnomad.broadinstitute.org/downloads) / [MobiDB](https://mobidb.org/api) / [DisProt](https://disprot.org/download) |
+| 10 | fpocket binding-pocket features | 186 | [fpocket](https://github.com/Discngine/fpocket) |
+| 11 | Protein physicochemical/sequence features | 463 | Derived locally from protein FASTA |
+| 12 | Protein language-model embeddings + PCA | 77 | [UniProt embedding archive](https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/embeddings/UP000005640_9606/per-protein.h5) |
+| 13 | NHGRI-EBI GWAS Catalog | 43 | [GWAS association download](https://www.ebi.ac.uk/gwas/api/search/downloads/associations/v1.0?split=false) |
+| 14 | Gene Ontology / QuickGO | 82 | [GOA human GAF](https://current.geneontology.org/annotations/goa_human.gaf.gz) / [go-basic.obo](https://purl.obolibrary.org/obo/go/go-basic.obo) |
+| 15 | BioGRID curated interactions | 50 | [BioGRID latest organism release](https://downloads.thebiogrid.org/Download/BioGRID/Latest-Release/BIOGRID-ORGANISM-LATEST.tab3.zip) |
+| 16 | Human Protein Atlas | 252 | [HPA downloads](https://www.proteinatlas.org/download/tsv) |
+| 17 | CTD chemical-gene interaction burden | 72 | [CTD chemical-gene interactions](https://ctdbase.org/reports/CTD_chem_gene_ixns.tsv.gz) |
+| 18 | Mouse Genome Informatics phenotypes | 56 | [MGI reports](https://www.informatics.jax.org/downloads/reports/) |
+| 19 | Full gnomAD constraint | 109 | [gnomAD downloads](https://gnomad.broadinstitute.org/downloads) |
+| 20 | CORUM protein complexes | 122 | [CORUM](https://mips.helmholtz-muenchen.de/corum/) |
+| 21 | PhosphoSitePlus PTM sites | 153 | [PhosphoSitePlus downloads](https://www.phosphosite.org/downloads) |
+| 22 | Ensembl BioMart/Compara paralogues | 22 | [Ensembl BioMart](https://www.ensembl.org/biomart/martservice) |
+| **Total** | **All 22 blocks** | **2,285** | |
+
+## Feature Script Catalog
+
+| Script | Purpose | Main output |
+|---|---|---|
+| `Feature0-DownloadDatabase.py` | Downloads core non-label feature databases. | `feature_databases/` |
+| `Feature1_DeMap.py` | DepMap functional-genomics feature builder. | `feature1.dmapp.database/` |
+| `Feature1_DepMap.py` | DepMap download-only helper. | Downloaded DepMap files |
+| `Feature2_String.py` | STRING network topology and evidence-channel features. | `feature2.string.database/` |
+| `Feature3_Pathway.py` | Reactome pathway membership and hierarchy. | `feature3_pathway/` |
+| `Feature4_AlphaFold.py` | AlphaFold and PDB structure features. | `feature4_structure/` |
+| `Feature5_InterProPfam.py` | InterPro/Pfam domain architecture. | `feature5_interpro_pfam/` |
+| `Feature6_UniProt.py` | UniProt annotation and sequence features. | `feature6_uniprot/` |
+| `Feature7_GTEx.py` | GTEx tissue-expression features. | `feature7_gtex/` |
+| `Feature8_Ensmbl.py` | Ensembl genomic annotation and gene structure. | `feature8_ensembl/` |
+| `Feature9_Genetics_Contraint.py` | Disorder and genetic constraint/intolerance. | `feature9_disorder_constraint/` |
+| `Feature10-FPocket.py` | Chunked geometry and optional fpocket scoring. | `feature10_pocket_geometry/processed/chunks/` |
+| `Feature10-FPocket-merge.py` | Merges Feature 10 chunks. | `feature10_pocket_geometry/` |
+| `Feature11-ProteinFeatures.py` | Protein sequence composition and physicochemical features. | `feature11_protein_sequence/` |
+| `Feature12-ProteinSequence.py` | Protein embedding and PCA features. | `feature12_protein_embeddings/` |
+| `Feature13_GWAS.py` | GWAS association burden and pleiotropy. | `feature13_gwas_catalog/` |
+| `Feature14_GO.py` | Gene Ontology features. | `feature14_gene_ontology/` |
+| `Feature15_BioGRID.py` | Curated interaction-network features. | `feature15_biogrid/` |
+| `Feature16_HPA.py` | HPA expression and localisation features. | `feature16_hpa/` |
+| `Feature17_CTD.py` | Aggregate CTD chemical-gene burden. | `feature17_ctd/` |
+| `Feature18_MGI.py` | Mouse orthology and phenotype features. | `feature18_mgi/` |
+| `Feature19_gnomAD_full.py` | Expanded gnomAD constraint metrics. | `feature19_gnomad_full/` |
+| `Feature20_CORUM.py` | Protein-complex membership features. | `feature20_corum/` |
+| `Feature21_PhosphoSitePlus.py` | PTM and kinase-substrate features. | `feature21_phosphositeplus/` |
+| `Feature22_Paralogues.py` | Human paralogue features. | `feature22_paralogues/` |
+
+## Analysis and Modelling Scripts
+
+| Script | Purpose |
+|---|---|
+| `Analysis1-MergeData.py` | Merges all available feature blocks into `Dataset/Features_All.csv`. |
+| `Analysis2-ListFeaturesStatistics.py` | Produces per-feature coverage, missingness and numeric statistics. |
+| `Analysis2.1-ListFeaturesStatistics.py` | Prints feature counts per block. |
+| `Analysis3-MakeDatasets.py` | Builds the 440 train-ready target-feature datasets. |
+| `Analysis4-TrainModels.py` | Trains Random Forest and XGBoost for one dataset. |
+| `Analysis4-TrainModels.sh` | Runs all 440 datasets as a SLURM array. |
+| `Analysis4.0-CheckDatasets.py` | Audits dataset and training output completeness. |
+
+## Target-Level Benchmark Results
+
+Results below use the intended 440-dataset benchmark:
+
+| Target | Best AUROC | Median AUROC | Median AUPRC | Median MCC | Best feature group |
+|---|---:|---:|---:|---:|---|
+| T1 Clinical Target | 0.9738 | 0.9142 | 0.5582 | 0.4521 | CUM20 |
+| T2 Clinical Investigation Target | 0.9302 | 0.8491 | 0.1966 | 0.1739 | CUM22 |
+| T3 Small-Molecule Target | 0.9394 | 0.8505 | 0.7849 | 0.5198 | CUM18 |
+| T4 Chemical Tractability Target | 0.9397 | 0.8488 | 0.7726 | 0.5147 | CUM22 |
+| T5 Biologic/Modality Target | 0.9809 | 0.8496 | 0.8666 | 0.5325 | GRP_NoStructure |
+| T6 Drug-Gene Interaction Target | 0.8914 | 0.8197 | 0.6402 | 0.4277 | CUM19 |
+| T7 Potentially Druggable Family Target | 0.9142 | 0.8249 | 0.8312 | 0.4819 | CUM20 |
+| T8 Broad Druggability Target | 0.9557 | 0.8345 | 0.9418 | 0.4339 | GRP_Full |
+
+The strict Clinical Target has low prevalence, so AUPRC and AUPRC enrichment
+are especially important alongside AUROC. The broad T8 target has high
+prevalence and should be interpreted as an evidence-union target.
+
+## Feature Importance
+
+The supplied results contain:
+
+- 516,672 model-derived feature-importance rows.
+- 21,168 top-feature rows.
+- Feature importance outputs for all trained datasets.
+
+Highly ranked individual predictors include:
+
+- PDB structure availability and PDB count.
+- Reactome Ensembl/UniProt mapping indicators.
+- STRING weighted degree, k-core and approximate closeness centrality.
+- UniProt transmembrane, membrane and signal-peptide annotations.
+- Gene Ontology author-statement/evidence-code counts.
+- DepMap expression summaries.
+
+The supplied manuscript reports the highest-ranked evidence blocks as STRING
+network features, DepMap functional genomics, Reactome pathways, InterPro/Pfam
+domains, UniProt annotations and AlphaFold/PDB structure features. This supports
+the central conclusion that predictive signal is distributed across multiple
+complementary evidence sources.
+
+These values describe model contribution, not causal biological importance.
+Correlated predictors, annotation density and tree-model splitting behavior can
+affect importance rankings.
+
+## Data Leakage Controls
+
+Direct target-defining evidence must never be used as model input:
+
+- ChEMBL target/activity evidence.
+- Open Targets tractability and known-drug evidence.
+- DGIdb direct drug-gene evidence.
+- Pharos/TCRD target-development labels.
+- Approved-drug counts.
+- Clinical-target labels.
+
+The modelling pipeline also removes identifiers, text, accessions, paths, URLs,
+raw fields and columns matching suspicious leakage terms.
+
+CTD is retained only as aggregate chemical-gene perturbation burden features.
+Chemical names and direct drug-label fields are excluded.
+
+## Supplementary Workbook
+
+`Supplementary Material 2.xlsx` currently contains:
+
+| Sheet | Current contents |
+|---|---|
+| `Feature Statistics` | 2,285 feature rows plus header. |
+| `Dataset Statistics` | Dataset composition, target, feature-count and missingness records. |
+| `Model Performance` | Best-model performance summaries for the benchmark datasets. |
+| `Feature Importance` | Global and within-block feature-importance rankings. |
+
+### Workbook Consistency Note
+
+The current workbook contains 441 rows in `Model Performance` because Dataset
+ID 97 appears twice. The intended experimental design and reported benchmark
+contain 440 unique dataset IDs. Results in this README were calculated after
+deduplicating by Dataset ID.
+
+Treat the workbook as a compiled results artifact and preserve a backup before
+running scripts that write Excel output.
+
+## Current Naming and Consistency Notes
+
+Use the filenames that actually exist in this repository:
+
+- `Feature4_AlphaFold.py` is internally described as the structure feature.
+- `Feature8_Ensmbl.py` contains the filename spelling `Ensmbl`.
+- `Feature9_Genetics_Contraint.py` contains the filename spelling `Contraint`.
+- `Feature11-ProteinFeatures.py` implements protein physicochemical/sequence
+  features.
+- `Feature12-ProteinSequence.py` implements protein embeddings.
+
+The workbook and supplied manuscript label Feature 12 as **ESM-2 embeddings**,
+while the current Feature 12 script documentation and download URL refer to the
+UniProt **ProtT5** per-protein embedding archive. Confirm the intended embedding
+source before rerunning Feature 12 or reporting the method.
 
 ## Expected Directory Structure
-
-The pipeline creates or expects a structure similar to:
 
 ```text
 databases/
@@ -198,227 +558,36 @@ feature_databases/
 Step0_Output/
 feature1.dmapp.database/
 feature2.string.database/
-feature3_pathway/
 ...
 feature22_paralogues/
+
+Dataset/
+    Features_All.csv
+
+Datasets/
+    dataset_catalogue.csv
+    Dataset001_F01_T1/
+    ...
+    Dataset440_GRP_Structure_T8/
 ```
 
-Most feature output directories contain:
-
-- `downloads/` or `raw/`: cached source data.
-- `processed/`: long-form, gene-level, and HGNC-merged tables.
-- `*_summary.txt`: a human-readable run summary.
-- `*_run_metadata.json`: run settings and provenance.
-
-## Label and Dataset Scripts
-
-| Script | Purpose | Main outputs |
-|---|---|---|
-| `Dataset0-DownloadDatabases.py` | Safely downloads label/evidence databases: HGNC, ChEMBL, Open Targets, DGIdb, and TCRD/Pharos. | `databases/`, download metadata, and manual-download notes where needed. |
-| `Dataset1-GenerateData.py` | Builds the human gene-level druggability ground-truth/evidence table. Optionally queries the Pharos GraphQL API. | `Step0_Output/03_HumanGene_DruggabilityLabels.csv`, label summary, raw evidence, and API caches. |
-| `Dataset1.1-GenerateDataCheckFeatures.py` | Prints diagnostics, label distributions, missingness, top genes, and sanity checks for the generated label table. | Console diagnostic report. |
-
-Useful label-builder options:
-
-```bash
-python Dataset1-GenerateData.py --skip-pharos-api
-python Dataset1-GenerateData.py --max-pharos-genes 100
-python Dataset1-GenerateData.py --all-locus-types
-```
-
-## Feature Database Downloader
-
-`Feature0-DownloadDatabase.py` downloads non-label feature sources. It
-deliberately excludes ChEMBL, Open Targets tractability/knownDrugs, Pharos/TCRD
-labels, DGIdb, DrugBank, and Guide to Pharmacology drug-target evidence.
-
-Modes:
-
-```bash
-python Feature0-DownloadDatabase.py --minimal
-python Feature0-DownloadDatabase.py --recommended
-python Feature0-DownloadDatabase.py --full
-python Feature0-DownloadDatabase.py --sources hgnc uniprot ensembl string gtex
-```
-
-Important behavior:
-
-- Existing valid files are skipped.
-- Partial `.part` downloads are resumed.
-- `--overwrite` forces replacement.
-- AlphaFold human archives are discovered dynamically.
-- AlphaFold, full InterPro, and Pfam downloads are optional because they are
-  very large.
-
-## Feature Script Catalog
-
-| Feature | Script | Biological signal | Primary output directory |
-|---|---|---|---|
-| 1 | `Feature1_DeMap.py` | DepMap CRISPR dependency, expression, mutation, copy-number, and optional functional-genomics summaries. | `feature1.dmapp.database/` |
-| 1 download-only helper | `Feature1_DepMap.py` | Downloads selected DepMap release files through the Figshare API without feature generation. | User-selected output directory. |
-| 2 | `Feature2_String.py` | STRING mapping, interaction burden, evidence channels, and network topology. | `feature2.string.database/` |
-| 3 | `Feature3_Pathway.py` | Reactome pathway membership, hierarchy, and pathway diversity. | `feature3_pathway/` |
-| 4 | `Feature4_AlphaFold.py` | Experimental PDB and AlphaFold structure availability, confidence, and geometry. | `feature4_structure/` |
-| 5 | `Feature5_InterProPfam.py` | InterPro/Pfam domain, family, repeat, and architecture features. | `feature5_interpro_pfam/` |
-| 6 | `Feature6_UniProt.py` | UniProt annotation, localization, sequence, motif, and functional text features. | `feature6_uniprot/` |
-| 7 | `Feature7_GTEx.py` | GTEx tissue expression, specificity, entropy, and breadth. | `feature7_gtex/` |
-| 8 | `Feature8_Ensmbl.py` | Ensembl genomic coordinates, transcripts, exons, CDS/UTR, and FASTA length summaries. | `feature8_ensembl/` |
-| 9 | `Feature9_Genetics_Contraint.py` | Protein disorder plus gnomAD genetic constraint/intolerance. | `feature9_disorder_constraint/` |
-| 10 | `Feature10-FPocket.py` | Per-chunk structure geometry and optional fpocket pocket scores. | `feature10_pocket_geometry/processed/chunks/` |
-| 10 merge | `Feature10-FPocket-merge.py` | Merges Feature 10 array-job chunks into final gene-level tables. | `feature10_pocket_geometry/` |
-| 11 | `Feature11-ProteinFeatures.py` | Protein sequence composition and physicochemical features from Ensembl peptide FASTA. | `feature11_protein_sequence/` |
-| 12 | `Feature12-ProteinSequence.py` | UniProt ProtT5 embeddings and PCA-reduced gene-level embedding features. | `feature12_protein_embeddings/` |
-| 13 | `Feature13_GWAS.py` | GWAS Catalog association burden and pleiotropy. | `feature13_gwas_catalog/` |
-| 14 | `Feature14_GO.py` | Gene Ontology annotation burden, categories, evidence, diversity, and optional depth. | `feature14_gene_ontology/` |
-| 15 | `Feature15_BioGRID.py` | Curated BioGRID physical/genetic interaction-network features. | `feature15_biogrid/` |
-| 16 | `Feature16_HPA.py` | Human Protein Atlas localization, RNA, tissue, immune, single-cell, and protein expression. | `feature16_hpa/` |
-| 17 | `Feature17_CTD.py` | CTD chemical-gene interaction burden. | `feature17_ctd/` |
-| 18 | `Feature18_MGI.py` | Mouse orthology, knockout phenotype, lethality, and phenotype burden. | `feature18_mgi/` |
-| 19 | `Feature19_gnomAD_full.py` | Expanded gnomAD gene-constraint metrics. | `feature19_gnomad_full/` |
-| 20 | `Feature20_CORUM.py` | CORUM protein-complex membership and complex-level summaries. | `feature20_corum/` |
-| 21 | `Feature21_PhosphoSitePlus.py` | PhosphoSitePlus PTM-site and kinase-substrate features. | `feature21_phosphositeplus/` |
-| 22 | `Feature22_Paralogues.py` | Ensembl BioMart human paralogue count and sequence-identity features. | `feature22_paralogues/` |
-
-## Feature-Specific Notes
-
-### Features 1-3: Functional Genomics and Networks
-
-- `Feature1_DeMap.py` is the complete DepMap feature builder. It defaults to
-  `DepMap Public 26Q1`.
-- `Feature1_DepMap.py` only downloads DepMap files; it does not create features.
-- `Feature2_String.py` can resume from cached API data with `--no-api`.
-  Expensive graph calculations can be disabled with `--skip-expensive-graph`.
-- `Feature3_Pathway.py` downloads Reactome mapping files once and reuses them.
-
-### Features 4 and 10: Structures and Pockets
-
-`Feature4_AlphaFold.py` downloads per-protein AlphaFold/PDB structures and builds
-gene-level structural features.
-
-Feature 10 depends on Feature 4 structures and is designed for chunked HPC use:
-
-```bash
-sbatch Feature10-FPocket.sh
-python Feature10-FPocket-merge.py
-```
-
-For local testing:
-
-```bash
-python Feature10-FPocket.py 1 --chunk-size 100
-python Feature10-FPocket.py 1 --chunk-size 100 --run-fpocket
-```
-
-The shell script currently requests a 200-task SLURM array, 50 GB memory per
-task, and a 24-hour time limit.
-
-### Features 5-9 and 11-12: Protein Biology
-
-- Feature 5 expects InterPro/Pfam files downloaded by Feature 0.
-- Feature 6 uses local UniProt data first and can fall back to the UniProt REST
-  API.
-- Feature 7 expects a GTEx gene median TPM expression file.
-- Feature 8 expects Ensembl GTF, cDNA FASTA, and peptide FASTA files.
-- Feature 9 combines DisProt, MobiDB, gnomAD, and optional Feature 4 AlphaFold
-  confidence proxies.
-- Feature 11 computes direct sequence composition and physicochemical features.
-- Feature 12 downloads a large UniProt ProtT5 HDF5 embedding file and requires
-  `h5py` plus scikit-learn.
-
-### Features 13-22: Extended Biological Evidence
-
-Several scripts download their source data only when `--download` is supplied:
-
-```bash
-python Feature13_GWAS.py --download
-python Feature14_GO.py --download
-python Feature15_BioGRID.py --download
-python Feature17_CTD.py --download
-python Feature18_MGI.py --download
-python Feature21_PhosphoSitePlus.py --download
-```
-
-Other behavior:
-
-- Feature 16 automatically discovers/downloads many HPA files and supports
-  manual file paths.
-- Feature 19 reuses the gnomAD constraint file used by Feature 9.
-- Feature 20 is local-file-first and expects CORUM files in
-  `feature_databases/CORUM/`.
-- Feature 22 queries Ensembl BioMart in batches and caches the raw paralogue
-  table. Use `--no-download` to require the cache.
-
-## Naming Notes
-
-Some filenames differ from the script names shown inside their docstrings.
-Always run the filenames that actually exist in this repository:
-
-- Run `Feature11-ProteinFeatures.py`; it implements Feature 11 protein sequence
-  composition.
-- Run `Feature12-ProteinSequence.py`; it implements Feature 12 ProtT5 protein
-  embeddings.
-- Run `Feature8_Ensmbl.py`; the filename contains `Ensmbl`, while the internal
-  feature name is Ensembl.
-- Run `Feature9_Genetics_Contraint.py`; the filename contains `Contraint`, while
-  the internal feature name is disorder/constraint.
-- Run `Feature4_AlphaFold.py`; its internal documentation calls it
-  `Feature4_Structure.py`.
-- Run `Feature0-DownloadDatabase.py`; its internal documentation calls it
-  `Step0B_Download_NoLeakage_Feature_Databases.py`.
-
-## Data Leakage Policy
-
-The ground-truth pipeline intentionally uses known drug-target evidence. Those
-columns must remain on the label side of the modelling boundary.
-
-Do not use the following as predictive input features:
-
-- ChEMBL activity or target evidence.
-- DGIdb drug-gene interactions.
-- Open Targets tractability or known-drug evidence.
-- Pharos/TCRD `Tclin`, `Tchem`, `Tbio`, or `Tdark` labels.
-- Approved-drug counts or direct known-target flags.
-
-Most feature scripts explicitly exclude these sources. However, GWAS, CTD,
-pathway, disease, and annotation-derived features can still encode indirect
-knowledge about well-studied genes. Their use should be documented and evaluated
-with sensitivity analyses.
-
-## Reproducibility and Caching
+## Caching and Reproducibility
 
 - Downloaders skip existing valid files unless explicitly forced.
-- Most API-based feature scripts cache downloaded/raw responses.
-- Summary text and JSON metadata files record run settings.
-- Use the same HGNC file across all features to preserve a consistent gene
-  universe.
-- Keep release names and download dates with final modelling datasets.
-- Avoid deleting raw or download directories until all processed outputs have
-  been validated.
-
-## Supplementary Workbook
-
-`Supplementary Material 2.xlsx` is a summary workbook with these sheets:
-
-| Sheet | Contents |
-|---|---|
-| `Feature Statistics` | Feature source, full/short feature name, gene coverage, missingness, and numeric distribution statistics. |
-| `Dataset Statistics` | Dataset ID/name, tier, feature group, target definition, feature count, gene count, class balance, prevalence, and missingness. |
-| `Model Performance` | Currently empty and reserved for future results. |
-
-The workbook summarizes previously generated datasets; it is not consumed by
-the current Python scripts.
+- API-based feature scripts cache downloaded/raw responses where possible.
+- Most feature scripts write summary text and JSON run metadata.
+- Use the same HGNC release across all feature blocks.
+- Archive database versions and download dates with final outputs.
+- Keep raw downloads until processed outputs and mappings are validated.
+- Impute missing values only inside model-training folds.
+- Treat model performance as internal validation until external validation is
+  completed.
 
 ## Troubleshooting
 
-### No sources selected
+### Downloader reports no sources selected
 
-This is expected when a downloader is run without a mode or source list:
-
-```text
-No sources selected. Use --minimal, --recommended, --full, or --sources ...
-```
-
-Use:
+Supply a mode:
 
 ```bash
 python Feature0-DownloadDatabase.py --recommended
@@ -426,46 +595,43 @@ python Feature0-DownloadDatabase.py --recommended
 
 ### Existing files are skipped
 
-Messages such as the following are expected and protect against unnecessary
-downloads:
+This is expected:
 
 ```text
 [SKIP] Existing file: ...
 ```
 
-Use `--overwrite`, `--force-download`, or `--force` only when the relevant
-script documents that option and a refresh is genuinely required.
+Use `--overwrite`, `--force-download` or `--force` only when the relevant
+script documents the option and a refresh is required.
 
-### Missing input database
+### A feature source is unavailable
 
-Check the script's default `feature_databases/<source>/` directory, provide the
-manual file option where supported, or rerun with `--download`.
+External APIs and FTP layouts can change. Keep caches, retry later or manually
+place the expected source file in the documented `feature_databases/`
+subdirectory.
 
-### API or FTP failures
+### A full run is too large
 
-External endpoints can change or be temporarily unavailable. Keep existing
-download caches, retry later, or place the required source file manually in the
-documented database directory.
-
-### Large runs
-
-Start with a script's test option before a full run:
+Use each script's testing options first, for example:
 
 ```bash
 python Feature4_AlphaFold.py --limit-genes 100
 python Feature13_GWAS.py --max-rows 100000
 python Feature18_MGI.py --max-pheno-rows 200000
 python Feature22_Paralogues.py --limit-genes 1000
+python Analysis3-MakeDatasets.py --dry-run
 ```
 
-## Source File Inventory
+## Data Availability
 
-The repository contains:
+All source data used by the pipeline come from publicly available resources or
+resources available for academic use. No private or patient-identifiable data
+are used.
 
-- 29 Python scripts.
-- 1 SLURM shell script.
-- 1 supplementary Excel workbook.
-- Generated Python bytecode under `__pycache__/`.
-- A temporary hidden Excel lock file may appear while the workbook is open.
+Repository:
+[MuhammadMuneeb007/Gene_Druggability_Finder](https://github.com/MuhammadMuneeb007/Gene_Druggability_Finder)
 
-Generated bytecode and temporary lock files are not pipeline inputs.
+## Citation and Reuse
+MIT LICENSE
+The repository currently does not contain a licence file. Verify reuse and
+redistribution permissions before using the code outside the project.
