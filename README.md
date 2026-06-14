@@ -633,5 +633,4 @@ Repository:
 
 ## Citation and Reuse
 MIT LICENSE
-The repository currently does not contain a licence file. Verify reuse and
-redistribution permissions before using the code outside the project.
+ 
